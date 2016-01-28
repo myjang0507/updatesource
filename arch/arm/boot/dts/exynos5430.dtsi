@@ -1044,6 +1044,7 @@
 			"aclk_gscl_111";
 		ip_ver = <2>;
 		mif_min = <158000>;
+		mif_min_otf_rot = <413000>;
 		int_min = <111000>;
 		samsung,power-domain = <&spd_gscl0>;
 	};

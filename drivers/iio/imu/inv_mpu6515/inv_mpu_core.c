@@ -70,6 +70,14 @@ s64 get_time_ns(void)
 	return timestamp;
 }
 
+void check_fifo_rate(int *fifo_rate)
+{
+	if (*fifo_rate > MAX_FIFO_RATE)
+		*fifo_rate = MAX_FIFO_RATE;
+	else if (*fifo_rate < MIN_FIFO_RATE)
+		*fifo_rate = MIN_FIFO_RATE;
+}
+
 s64 get_time_timeofday(void)
 {
 	struct timeval tv;
@@ -691,8 +699,6 @@ int inv_reset_offset_reg(struct inv_mpu_state *st, bool en)
  */
 static int inv_fifo_rate_store(struct inv_mpu_state *st, int fifo_rate)
 {
-	if ((fifo_rate < MIN_FIFO_RATE) || (fifo_rate > MAX_FIFO_RATE))
-		return -EINVAL;
 	if (fifo_rate == st->chip_config.fifo_rate)
 		return 0;
 
@@ -866,8 +872,10 @@ static ssize_t _dmp_attr_store(struct device *dev,
 		st->chip_config.step_indicator_on = !!data;
 		break;
 	case ATTR_DMP_BATCHMODE_TIMEOUT:
-		if (data < 0 || data > INT_MAX)
-			return -EINVAL;
+		if (data > INT_MAX)
+			data = INT_MAX;
+		else if (data < 0)
+			data = 0;
 		st->batch.timeout = data;
 		break;
 	case ATTR_DMP_BATCHMODE_WAKE_FIFO_FULL:
@@ -876,20 +884,20 @@ static ssize_t _dmp_attr_store(struct device *dev,
 		break;
 	case ATTR_DMP_SIX_Q_ON:
 		st->sensor[SENSOR_SIXQ].on = !!data;
+		st->sensor[SENSOR_SIXQ].old_ts = 0ULL;
 		break;
 	case ATTR_DMP_SIX_Q_RATE:
-		if (data > MPU_DEFAULT_DMP_FREQ || data < 0)
-			return -EINVAL;
+		check_fifo_rate(&data);
 		st->sensor[SENSOR_SIXQ].rate = data;
 		st->sensor[SENSOR_SIXQ].dur = MPU_DEFAULT_DMP_FREQ / data;
 		st->sensor[SENSOR_SIXQ].dur *= DMP_INTERVAL_INIT;
 		break;
 	case ATTR_DMP_LPQ_ON:
 		st->sensor[SENSOR_LPQ].on = !!data;
+		st->sensor[SENSOR_LPQ].old_ts = 0ULL;
 		break;
 	case ATTR_DMP_LPQ_RATE:
-		if (data > MPU_DEFAULT_DMP_FREQ || data < 0)
-			return -EINVAL;
+		check_fifo_rate(&data);
 		st->sensor[SENSOR_LPQ].rate = data;
 		st->sensor[SENSOR_LPQ].dur = MPU_DEFAULT_DMP_FREQ / data;
 		st->sensor[SENSOR_LPQ].dur *= DMP_INTERVAL_INIT;
@@ -2170,6 +2178,7 @@ static ssize_t _attr_store(struct device *dev,
 		st->self_test.threshold = data;
 	case ATTR_GYRO_ENABLE:
 		st->chip_config.gyro_enable = !!data;
+		st->sensor[SENSOR_GYRO].old_ts = 0ULL;
 		if (st->chip_config.gyro_enable)
 			gyro_open_calibration(st);
 		break;
@@ -2177,12 +2186,14 @@ static ssize_t _attr_store(struct device *dev,
 		st->sensor[SENSOR_GYRO].on = !!data;
 		break;
 	case ATTR_GYRO_RATE:
+		check_fifo_rate(&data);
 		st->sensor[SENSOR_GYRO].rate = data;
 		st->sensor[SENSOR_GYRO].dur  = MPU_DEFAULT_DMP_FREQ / data;
 		st->sensor[SENSOR_GYRO].dur  *= DMP_INTERVAL_INIT;
 		break;
 	case ATTR_ACCEL_ENABLE:
 		st->chip_config.accel_enable = !!data;
+		st->sensor[SENSOR_ACCEL].old_ts = 0ULL;
 		if (st->chip_config.accel_enable)
 			accel_open_calibration(st);
 		break;
@@ -2190,6 +2201,7 @@ static ssize_t _attr_store(struct device *dev,
 		st->sensor[SENSOR_ACCEL].on = !!data;
 		break;
 	case ATTR_ACCEL_RATE:
+		check_fifo_rate(&data);
 		st->sensor[SENSOR_ACCEL].rate = data;
 		st->sensor[SENSOR_ACCEL].dur  = MPU_DEFAULT_DMP_FREQ / data;
 		st->sensor[SENSOR_ACCEL].dur  *= DMP_INTERVAL_INIT;
@@ -2231,6 +2243,7 @@ static ssize_t _attr_store(struct device *dev,
 		result = inv_firmware_loaded(st, data);
 		break;
 	case ATTR_SAMPLING_FREQ:
+		check_fifo_rate(&data);
 		result = inv_fifo_rate_store(st, data);
 		break;
 #ifdef CONFIG_INV_TESTING
